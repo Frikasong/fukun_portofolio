@@ -1,0 +1,5 @@
+name = "fukun-portfolio"
+compatibility_date = "2024-02-08"
+
+[site]
+bucket = "./"
