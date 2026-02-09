@@ -604,6 +604,8 @@ function App() {
             onAddComment={addComment}
             onDeleteComment={deleteComment}
             setActiveSection={setActiveSection}
+            setReadingEntry={setReadingEntry}
+            setView={setView}
           />
         ) : (
           <EditorView
@@ -752,7 +754,7 @@ function ReadingView({ entry, comments, onBack, onAddComment, onDeleteComment })
 // ═══════════════════════════════════════════════════════════════════════════
 // GRID VIEW
 // ═══════════════════════════════════════════════════════════════════════════
-function GridView({ section, entries, comments, onNew, onEdit, onDelete, onAddComment, onDeleteComment, setActiveSection }) {
+function GridView({ section, entries, comments, onNew, onEdit, onDelete, onAddComment, onDeleteComment, setActiveSection, setReadingEntry, setView }) {
   // Special handling for About section
   if (section.id === "about") {
     return (
