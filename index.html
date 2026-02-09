@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -274,6 +273,7 @@ function App() {
   const [readingEntry, setReadingEntry] = useState(null); // For full-page reading view
   const [form, setForm] = useState({ title: "", date: "", body: "", images: [], attachments: [], section: "legal-tech" });
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
   
   // Music player
   const [isPlaying, setIsPlaying] = useState(false);
@@ -291,6 +291,15 @@ function App() {
   useEffect(() => {
     loadEntries().then(setEntries);
     loadComments().then(setComments);
+  }, []);
+
+  // Scroll detection for sticky nav
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 100);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
   // Music controls
@@ -463,12 +472,41 @@ function App() {
         </div>
       )}
 
+      {/* Floating Quick Navigation */}
+      {isScrolled && view === "grid" && (
+        <div style={styles.floatingNav}>
+          <div style={styles.floatingNavTitle}>Quick Nav</div>
+          {SECTIONS.map((section) => (
+            <button
+              key={section.id}
+              style={{
+                ...styles.floatingNavBtn,
+                ...(activeSection === section.id ? styles.floatingNavBtnActive : {})
+              }}
+              onClick={() => {
+                setActiveSection(section.id);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+            >
+              <span style={styles.floatingNavIcon}>{section.icon}</span>
+              <span style={styles.floatingNavLabel}>{section.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Header */}
       <header style={styles.header}>
         <div style={styles.headerContent}>
           <div style={styles.headerLeft} onClick={() => { setView("grid"); setActiveSection("about"); }}>
             <h1 style={styles.siteName}>Fukun</h1>
-            <p style={styles.tagline}>Law · Technology · Ideas</p>
+            <p style={styles.tagline}>
+              <span style={styles.taglineLink} onClick={(e) => { e.stopPropagation(); setView("grid"); setActiveSection("law"); }}>Law</span>
+              {' · '}
+              <span style={styles.taglineLink} onClick={(e) => { e.stopPropagation(); setView("grid"); setActiveSection("tech"); }}>Technology</span>
+              {' · '}
+              <span style={styles.taglineLink} onClick={(e) => { e.stopPropagation(); setView("grid"); setActiveSection("life"); }}>Ideas</span>
+            </p>
           </div>
           <button style={styles.menuToggle} onClick={() => setMenuOpen(!menuOpen)}>
             ☰
@@ -890,7 +928,7 @@ function EntryCard({ entry, comments, onEdit, onDelete, onAddComment, onDeleteCo
 
       <div style={styles.cardContent}>
         {/* Header */}
-        <div style={styles.cardHeader} onClick={onClick} style={{...styles.cardHeader, cursor: 'pointer'}}>
+        <div onClick={onClick} style={{...styles.cardHeader, cursor: 'pointer'}}>
           <h3 style={styles.cardTitle}>{entry.title}</h3>
           <span style={styles.cardDate}>{formattedDate}</span>
         </div>
@@ -1258,6 +1296,12 @@ const styles = {
     letterSpacing: "1.8px",
     textTransform: "uppercase",
     fontWeight: 500,
+  },
+  taglineLink: {
+    cursor: "pointer",
+    transition: "all 0.2s",
+    borderBottom: "1px solid transparent",
+    padding: "2px 0",
   },
   menuToggle: {
     background: "rgba(212, 228, 240, 0.4)",
@@ -2144,6 +2188,62 @@ const styles = {
     cursor: "pointer",
     fontWeight: 600,
     alignSelf: "flex-start",
+  },
+  // Floating Navigation
+  floatingNav: {
+    position: "fixed",
+    right: 24,
+    top: "50%",
+    transform: "translateY(-50%)",
+    background: "#fff",
+    border: "1px solid rgba(173, 216, 230, 0.3)",
+    borderRadius: 16,
+    padding: "16px 12px",
+    boxShadow: "0 4px 20px rgba(100, 130, 150, 0.15)",
+    zIndex: 900,
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    minWidth: 140,
+  },
+  floatingNavTitle: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 11,
+    color: "#8a9aa8",
+    fontWeight: 600,
+    textTransform: "uppercase",
+    letterSpacing: "1px",
+    marginBottom: 8,
+    paddingBottom: 8,
+    borderBottom: "1px solid rgba(173, 216, 230, 0.2)",
+    textAlign: "center",
+  },
+  floatingNavBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 13,
+    background: "transparent",
+    border: "none",
+    borderRadius: 10,
+    padding: "10px 12px",
+    cursor: "pointer",
+    color: "#6a7a88",
+    transition: "all 0.2s",
+    textAlign: "left",
+    fontWeight: 500,
+  },
+  floatingNavBtnActive: {
+    background: "rgba(122, 184, 212, 0.1)",
+    color: "#6a9eb8",
+    fontWeight: 600,
+  },
+  floatingNavIcon: {
+    fontSize: 16,
+  },
+  floatingNavLabel: {
+    fontSize: 13,
   },
 };
 
