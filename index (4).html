@@ -1,0 +1,1823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fukun - Portfolio</title>
+  
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
+  
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { margin: 0; }
+    #root { width: 100%; min-height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  
+  <script>
+    window.storage = {
+      async get(key, shared = false) {
+        try {
+          const storageKey = shared ? 'shared_' + key : 'user_' + key;
+          const value = localStorage.getItem(storageKey);
+          return value ? { key: key, value: value, shared: shared } : null;
+        } catch (e) { return null; }
+      },
+      async set(key, value, shared = false) {
+        try {
+          const storageKey = shared ? 'shared_' + key : 'user_' + key;
+          localStorage.setItem(storageKey, value);
+          return { key: key, value: value, shared: shared };
+        } catch (e) { return null; }
+      }
+    };
+    if (window.pdfjsLib) {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+  </script>
+  
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+// ─── Storage Keys ───────────────────────────────────────────────────────────
+const ENTRIES_KEY = "fukun-portfolio-entries";
+const COMMENTS_KEY = "fukun-portfolio-comments";
+
+// ─── Section Configuration ──────────────────────────────────────────────────
+const SECTIONS = [
+  { id: "about", name: "About", icon: "👋", type: "info" },
+  { id: "law", name: "Law", icon: "⚖️", type: "professional" },
+  { id: "tech", name: "Tech", icon: "💻", type: "professional" },
+  { id: "social", name: "Social", icon: "🌍", type: "professional" },
+  { id: "life", name: "Life", icon: "✨", type: "personal" },
+  { id: "music", name: "Music", icon: "🎵", type: "personal" },
+  { id: "photography", name: "Photography", icon: "📷", type: "personal" },
+  { id: "contact", name: "Contact", icon: "📧", type: "info" },
+];
+
+// ─── Ambient Music Tracks ───────────────────────────────────────────────────
+const AMBIENT_TRACKS = [
+  { name: "Piano Moment", url: "https://assets.mixkit.co/music/preview/mixkit-piano-reflections-10.mp3" },
+  { name: "Serene Piano", url: "https://assets.mixkit.co/music/preview/mixkit-serene-view-443.mp3" },
+  { name: "Gentle Keys", url: "https://assets.mixkit.co/music/preview/mixkit-a-very-happy-christmas-897.mp3" },
+];
+
+// ─── Utility Functions ──────────────────────────────────────────────────────
+async function extractDocx(file) {
+  const mammoth = await import("mammoth");
+  const arrayBuffer = await file.arrayBuffer();
+  const result = await mammoth.extractRawText({ arrayBuffer });
+  return result.value;
+}
+
+async function extractPdf(file) {
+  if (!window.pdfjsLib) {
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    script.onload = () => {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    };
+    document.head.appendChild(script);
+    await new Promise((r) => (script.onload = r));
+  }
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  let text = "";
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    text += content.items.map((item) => item.str).join(" ") + "\n";
+  }
+  return text.trim();
+}
+
+async function extractText(file) {
+  const name = file.name.toLowerCase();
+  if (name.endsWith(".docx")) return await extractDocx(file);
+  if (name.endsWith(".pdf")) return await extractPdf(file);
+  throw new Error("Unsupported file type");
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// ─── GitHub Configuration ───────────────────────────────────────────────────
+const GITHUB_USERNAME = "frikasong"; // Your GitHub username
+const GITHUB_REPO = "fukun-portfolio"; // Your repo name
+const GITHUB_BRANCH = "main"; // Branch name
+
+// ─── Storage Helpers ────────────────────────────────────────────────────────
+async function loadEntriesFromGitHub() {
+  try {
+    // Fetch all posts from each section folder
+    const allEntries = [];
+    const sections = ["law", "tech", "social", "life", "music", "photography"];
+    
+    for (const section of sections) {
+      try {
+        // Get list of files in the section folder
+        const response = await fetch(
+          `https://api.github.com/repos/${GITHUB_USERNAME}/${GITHUB_REPO}/contents/posts/${section}?ref=${GITHUB_BRANCH}`,
+          { headers: { 'Accept': 'application/vnd.github.v3+json' } }
+        );
+        
+        if (!response.ok) {
+          console.log(`Section ${section} not found, skipping...`);
+          continue; // Skip if folder doesn't exist yet
+        }
+        
+        const files = await response.json();
+        
+        // Load each JSON file
+        for (const file of files) {
+          if (file.name.endsWith('.json')) {
+            try {
+              const postResponse = await fetch(file.download_url);
+              const post = await postResponse.json();
+              allEntries.push(post);
+            } catch (e) {
+              console.error(`Error loading ${file.name}:`, e);
+            }
+          }
+        }
+      } catch (e) {
+        console.log(`No posts in ${section} yet`);
+      }
+    }
+    
+    console.log(`Loaded ${allEntries.length} posts from GitHub`);
+    return allEntries;
+  } catch (error) {
+    console.error('Error loading entries from GitHub:', error);
+    return [];
+  }
+}
+
+async function loadEntries() {
+  // Try to load from GitHub first
+  try {
+    const githubEntries = await loadEntriesFromGitHub();
+    
+    if (githubEntries.length > 0) {
+      console.log('Using GitHub posts');
+      return githubEntries;
+    }
+  } catch (e) {
+    console.log('GitHub loading failed, using localStorage');
+  }
+  
+  // Fallback to localStorage
+  try {
+    const result = await window.storage.get(ENTRIES_KEY);
+    const localEntries = result ? JSON.parse(result.value) : [];
+    console.log(`Using ${localEntries.length} localStorage posts`);
+    return localEntries;
+  } catch {
+    console.log('No posts found');
+    return [];
+  }
+}
+
+async function saveEntries(entries) {
+  // Save to localStorage for local drafts/edits
+  await window.storage.set(ENTRIES_KEY, JSON.stringify(entries));
+}
+
+async function loadComments() {
+  try {
+    const result = await window.storage.get(COMMENTS_KEY, true);
+    return result ? JSON.parse(result.value) : {};
+  } catch {
+    return {};
+  }
+}
+
+async function saveComments(comments) {
+  await window.storage.set(COMMENTS_KEY, JSON.stringify(comments), true);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MAIN APP
+// ═══════════════════════════════════════════════════════════════════════════
+function App() {
+  const [entries, setEntries] = useState([]);
+  const [comments, setComments] = useState({});
+  const [activeSection, setActiveSection] = useState("about");
+  const [view, setView] = useState("grid"); // "grid" | "editor"
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState({ title: "", date: "", body: "", images: [], attachments: [], section: "legal-tech" });
+  const [menuOpen, setMenuOpen] = useState(false);
+  
+  // Music player
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTrack, setCurrentTrack] = useState(0);
+  const [showMusicPlayer, setShowMusicPlayer] = useState(false);
+  const audioRef = useRef(null);
+
+  // File handling
+  const [fileStatus, setFileStatus] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
+  const imageInputRef = useRef(null);
+  const attachmentInputRef = useRef(null);
+
+  useEffect(() => {
+    loadEntries().then(setEntries);
+    loadComments().then(setComments);
+  }, []);
+
+  // Music controls
+  const togglePlay = () => {
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play();
+    }
+    setIsPlaying(!isPlaying);
+  };
+
+  const nextTrack = () => {
+    setCurrentTrack((prev) => (prev + 1) % AMBIENT_TRACKS.length);
+    setIsPlaying(true);
+  };
+
+  const prevTrack = () => {
+    setCurrentTrack((prev) => (prev - 1 + AMBIENT_TRACKS.length) % AMBIENT_TRACKS.length);
+    setIsPlaying(true);
+  };
+
+  useEffect(() => {
+    if (audioRef.current && isPlaying) {
+      audioRef.current.play();
+    }
+  }, [currentTrack]);
+
+  // Entry management
+  const openNew = () => {
+    setForm({ title: "", date: new Date().toISOString().slice(0, 10), body: "", images: [], attachments: [], section: activeSection });
+    setEditing(null);
+    setFileStatus("");
+    setView("editor");
+  };
+
+  const openEdit = (entry) => {
+    setForm({
+      title: entry.title,
+      date: entry.date,
+      body: entry.body,
+      images: entry.images || [],
+      attachments: entry.attachments || [],
+      section: entry.section,
+    });
+    setEditing(entry);
+    setFileStatus("");
+    setView("editor");
+  };
+
+  const saveEntry = async () => {
+    if (!form.body.trim()) return;
+    let updated;
+    if (editing) {
+      updated = entries.map((e) => (e.id === editing.id ? { ...e, ...form } : e));
+    } else {
+      const newEntry = { id: Date.now(), ...form };
+      updated = [...entries, newEntry];
+    }
+    updated.sort((a, b) => new Date(b.date) - new Date(a.date));
+    setEntries(updated);
+    await saveEntries(updated);
+    setView("grid");
+  };
+
+  const deleteEntry = async (id) => {
+    const updated = entries.filter((e) => e.id !== id);
+    setEntries(updated);
+    await saveEntries(updated);
+    const { [id]: _, ...remainingComments } = comments;
+    setComments(remainingComments);
+    await saveComments(remainingComments);
+    if (editing && editing.id === id) setView("grid");
+  };
+
+  // File handling
+  const handleFile = async (file) => {
+    if (!file) return;
+    setUploading(true);
+    setFileStatus("Extracting text…");
+    try {
+      const text = await extractText(file);
+      setForm((prev) => ({ ...prev, body: text }));
+      setFileStatus(`✓ Imported from "${file.name}"`);
+    } catch (e) {
+      setFileStatus(`✗ ${e.message}`);
+    }
+    setUploading(false);
+  };
+
+  const handleImageUpload = async (e) => {
+    const files = Array.from(e.target.files);
+    const newImages = [];
+    for (const file of files) {
+      if (file.type.startsWith("image/")) {
+        const base64 = await fileToBase64(file);
+        newImages.push({ name: file.name, data: base64 });
+      }
+    }
+    setForm((prev) => ({ ...prev, images: [...prev.images, ...newImages] }));
+  };
+
+  const handleAttachmentUpload = async (e) => {
+    const files = Array.from(e.target.files);
+    const newAttachments = [];
+    for (const file of files) {
+      const base64 = await fileToBase64(file);
+      newAttachments.push({ name: file.name, data: base64, size: file.size });
+    }
+    setForm((prev) => ({ ...prev, attachments: [...prev.attachments, ...newAttachments] }));
+  };
+
+  const removeImage = (index) => {
+    setForm((prev) => ({ ...prev, images: prev.images.filter((_, i) => i !== index) }));
+  };
+
+  const removeAttachment = (index) => {
+    setForm((prev) => ({ ...prev, attachments: prev.attachments.filter((_, i) => i !== index) }));
+  };
+
+  // Comments
+  const addComment = async (entryId, name, text) => {
+    if (!text.trim()) return;
+    const newComment = { id: Date.now(), name: name.trim() || "Anonymous", text, timestamp: new Date().toISOString() };
+    const updated = { ...comments, [entryId]: [...(comments[entryId] || []), newComment] };
+    setComments(updated);
+    await saveComments(updated);
+  };
+
+  const deleteComment = async (entryId, commentId) => {
+    const updated = { ...comments, [entryId]: comments[entryId].filter((c) => c.id !== commentId) };
+    setComments(updated);
+    await saveComments(updated);
+  };
+
+  // Filtered entries
+  const sectionEntries = entries.filter((e) => e.section === activeSection);
+  const currentSection = SECTIONS.find((s) => s.id === activeSection);
+
+  return (
+    <div style={styles.root}>
+      {/* Background */}
+      <div style={styles.bgPattern} />
+
+      {/* Audio */}
+      <audio ref={audioRef} src={AMBIENT_TRACKS[currentTrack].url} loop />
+
+      {/* Music Player Toggle */}
+      <button style={styles.musicToggle} onClick={() => setShowMusicPlayer(!showMusicPlayer)}>
+        🎵
+      </button>
+
+      {/* Music Player Panel */}
+      {showMusicPlayer && (
+        <div style={styles.musicPlayer}>
+          <div style={styles.musicPlayerHeader}>
+            <span style={styles.musicPlayerTitle}>Ambient</span>
+            <button style={styles.musicClose} onClick={() => setShowMusicPlayer(false)}>×</button>
+          </div>
+          <div style={styles.trackInfo}>
+            <span style={styles.trackName}>{AMBIENT_TRACKS[currentTrack].name}</span>
+            <span style={styles.trackNumber}>{currentTrack + 1}/{AMBIENT_TRACKS.length}</span>
+          </div>
+          <div style={styles.musicControls}>
+            <button style={styles.musicBtn} onClick={prevTrack}>⏮</button>
+            <button style={styles.musicBtnPlay} onClick={togglePlay}>{isPlaying ? "⏸" : "▶"}</button>
+            <button style={styles.musicBtn} onClick={nextTrack}>⏭</button>
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
+      <header style={styles.header}>
+        <div style={styles.headerContent}>
+          <div style={styles.headerLeft} onClick={() => { setView("grid"); setActiveSection("about"); }}>
+            <h1 style={styles.siteName}>Fukun</h1>
+            <p style={styles.tagline}>Law · Technology · Ideas</p>
+          </div>
+          <button style={styles.menuToggle} onClick={() => setMenuOpen(!menuOpen)}>
+            ☰
+          </button>
+        </div>
+      </header>
+
+      {/* Navigation */}
+      <nav style={{ ...styles.nav, maxHeight: menuOpen ? "800px" : "0" }}>
+        <div style={styles.navInner}>
+          <div style={styles.navGroup}>
+            <span style={styles.navGroupTitle}>Info</span>
+            {SECTIONS.filter((s) => s.type === "info").map((section) => (
+              <button
+                key={section.id}
+                style={{
+                  ...styles.navBtn,
+                  ...(activeSection === section.id ? styles.navBtnActive : {}),
+                }}
+                onClick={() => {
+                  setActiveSection(section.id);
+                  setView("grid");
+                  setMenuOpen(false);
+                }}
+              >
+                <span style={styles.navIcon}>{section.icon}</span>
+                <span style={styles.navLabel}>{section.name}</span>
+              </button>
+            ))}
+          </div>
+          <div style={styles.navGroup}>
+            <span style={styles.navGroupTitle}>Professional</span>
+            {SECTIONS.filter((s) => s.type === "professional").map((section) => (
+              <button
+                key={section.id}
+                style={{
+                  ...styles.navBtn,
+                  ...(activeSection === section.id ? styles.navBtnActive : {}),
+                }}
+                onClick={() => {
+                  setActiveSection(section.id);
+                  setView("grid");
+                  setMenuOpen(false);
+                }}
+              >
+                <span style={styles.navIcon}>{section.icon}</span>
+                <span style={styles.navLabel}>
+                  {section.name}
+                  {section.subtitle && <span style={styles.navSubtitle}>{section.subtitle}</span>}
+                </span>
+              </button>
+            ))}
+          </div>
+          <div style={styles.navGroup}>
+            <span style={styles.navGroupTitle}>Personal</span>
+            {SECTIONS.filter((s) => s.type === "personal").map((section) => (
+              <button
+                key={section.id}
+                style={{
+                  ...styles.navBtn,
+                  ...(activeSection === section.id ? styles.navBtnActive : {}),
+                }}
+                onClick={() => {
+                  setActiveSection(section.id);
+                  setView("grid");
+                  setMenuOpen(false);
+                }}
+              >
+                <span style={styles.navIcon}>{section.icon}</span>
+                <span style={styles.navLabel}>{section.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </nav>
+
+      {/* Main Content */}
+      <main style={styles.main}>
+        {view === "grid" ? (
+          <GridView
+            section={currentSection}
+            entries={sectionEntries}
+            comments={comments}
+            onNew={openNew}
+            onEdit={openEdit}
+            onDelete={deleteEntry}
+            onAddComment={addComment}
+            onDeleteComment={deleteComment}
+            setActiveSection={setActiveSection}
+          />
+        ) : (
+          <EditorView
+            form={form}
+            setForm={setForm}
+            onSave={saveEntry}
+            onCancel={() => setView("grid")}
+            onFileInput={(e) => e.target.files[0] && handleFile(e.target.files[0])}
+            fileInputRef={fileInputRef}
+            imageInputRef={imageInputRef}
+            attachmentInputRef={attachmentInputRef}
+            onImageUpload={handleImageUpload}
+            onAttachmentUpload={handleAttachmentUpload}
+            removeImage={removeImage}
+            removeAttachment={removeAttachment}
+            fileStatus={fileStatus}
+            uploading={uploading}
+            isEditing={!!editing}
+          />
+        )}
+      </main>
+
+      {/* Footer */}
+      <footer style={styles.footer}>
+        <div style={styles.footerContent}>
+          <span>© 2026 Fukun · Osgoode Hall Law School</span>
+          <a href="mailto:frikasong@gmail.com" style={styles.footerLink}>
+            frikasong@gmail.com
+          </a>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GRID VIEW
+// ═══════════════════════════════════════════════════════════════════════════
+function GridView({ section, entries, comments, onNew, onEdit, onDelete, onAddComment, onDeleteComment, setActiveSection }) {
+  // Special handling for About section
+  if (section.id === "about") {
+    return (
+      <div style={styles.gridContainer}>
+        <div style={styles.sectionHeader}>
+          <div style={styles.sectionTitleRow}>
+            <span style={styles.sectionIcon}>{section.icon}</span>
+            <h2 style={styles.sectionTitle}>{section.name}</h2>
+          </div>
+        </div>
+        <div style={styles.aboutContent}>
+          <div style={styles.aboutCard}>
+            <h3 style={styles.aboutCardTitle}>Background</h3>
+            <p style={styles.aboutText}>
+              Fukun is a J.D. student at Osgoode Hall Law School in Class of 2027. She is interested in the intersection of law and tech, especially in the edgy development of legal technology. She is keen in investing and general tech topics.
+            </p>
+            <p style={styles.aboutText}>
+              She graduated from Tsinghua University with Bachelor in Science degree of Psychology and Juris Master degree. She also worked in a private equity firm on legal side.
+            </p>
+          </div>
+          <div style={styles.aboutCard}>
+            <h3 style={styles.aboutCardTitle}>Interests</h3>
+            <p style={styles.aboutText}>
+              In her spare time, she loves tennis, listening to all types of music with a special love to jazz, photography, reading and pottery.
+            </p>
+            <p style={styles.aboutText}>
+              She is more than happy to chat with people from different backgrounds, feel free to{' '}
+              <span 
+                style={styles.aboutConnectLink} 
+                onClick={() => {
+                  setActiveSection("contact");
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              >
+                connect
+              </span>!
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Special handling for Contact section
+  if (section.id === "contact") {
+    return (
+      <div style={styles.gridContainer}>
+        <div style={styles.sectionHeader}>
+          <div style={styles.sectionTitleRow}>
+            <span style={styles.sectionIcon}>{section.icon}</span>
+            <h2 style={styles.sectionTitle}>{section.name}</h2>
+          </div>
+        </div>
+        <div style={styles.contactContent}>
+          <div style={styles.contactCard}>
+            <p style={styles.contactIntro}>Let's connect!</p>
+            <div style={styles.contactIconsRow}>
+              <a 
+                href="mailto:frikasong@gmail.com" 
+                style={styles.contactIconLink}
+                title="Email: frikasong@gmail.com"
+              >
+                <div style={styles.contactIconCircle}>
+                  <span style={styles.contactIcon}>✉️</span>
+                </div>
+                <span style={styles.contactIconLabel}>Email</span>
+              </a>
+              <a 
+                href="https://www.linkedin.com/in/fukun-y-7753a5176/" 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                style={styles.contactIconLink}
+                title="LinkedIn"
+              >
+                <div style={styles.contactIconCircle}>
+                  <span style={styles.contactIcon}>💼</span>
+                </div>
+                <span style={styles.contactIconLabel}>LinkedIn</span>
+              </a>
+              <a 
+                href="https://instagram.com/frika_song" 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                style={styles.contactIconLink}
+                title="Instagram: @frika_song"
+              >
+                <div style={styles.contactIconCircle}>
+                  <span style={styles.contactIcon}>📷</span>
+                </div>
+                <span style={styles.contactIconLabel}>Instagram</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Regular content sections
+  return (
+    <div style={styles.gridContainer}>
+      {/* Section Header */}
+      <div style={styles.sectionHeader}>
+        <div style={styles.sectionTitleRow}>
+          <span style={styles.sectionIcon}>{section.icon}</span>
+          <div>
+            <h2 style={styles.sectionTitle}>{section.name}</h2>
+            {section.subtitle && <p style={styles.sectionSubtitle}>{section.subtitle}</p>}
+          </div>
+        </div>
+      </div>
+
+      {/* Entries Grid */}
+      {entries.filter(entry => entry.published !== false).length === 0 ? (
+        <div style={styles.emptyState}>
+          <div style={styles.emptyIcon}>{section.icon}</div>
+          <p style={styles.emptyText}>No posts yet in this section. Check back soon!</p>
+        </div>
+      ) : (
+        <div style={styles.grid}>
+          {entries
+            .filter(entry => entry.published !== false)
+            .map((entry) => (
+            <EntryCard
+              key={entry.id}
+              entry={entry}
+              comments={comments[entry.id] || []}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onAddComment={onAddComment}
+              onDeleteComment={onDeleteComment}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ENTRY CARD
+// ═══════════════════════════════════════════════════════════════════════════
+function EntryCard({ entry, comments, onEdit, onDelete, onAddComment, onDeleteComment }) {
+  const [expanded, setExpanded] = useState(false);
+  const [showComments, setShowComments] = useState(false);
+  const [commentName, setCommentName] = useState("");
+  const [commentText, setCommentText] = useState("");
+
+  const preview = entry.body.length > 180 ? entry.body.slice(0, 180).replace(/\s+\S*$/, "") + "…" : entry.body;
+  const formattedDate = entry.date
+    ? new Date(entry.date + "T12:00:00").toLocaleDateString("en-CA", { year: "numeric", month: "short", day: "numeric" })
+    : "";
+
+  const submitComment = () => {
+    onAddComment(entry.id, commentName, commentText);
+    setCommentName("");
+    setCommentText("");
+  };
+
+  return (
+    <article style={styles.card}>
+      {/* Cover Image */}
+      {entry.images && entry.images.length > 0 && (
+        <div style={styles.cardCover}>
+          <img src={entry.images[0].data} alt={entry.title} style={styles.cardCoverImg} />
+          <div style={styles.cardCoverOverlay} />
+        </div>
+      )}
+
+      <div style={styles.cardContent}>
+        {/* Header */}
+        <div style={styles.cardHeader}>
+          <h3 style={styles.cardTitle}>{entry.title}</h3>
+          <span style={styles.cardDate}>{formattedDate}</span>
+        </div>
+
+        {/* Body Preview */}
+        <p style={styles.cardBody}>{expanded ? entry.body : preview}</p>
+        {entry.body.length > 180 && (
+          <button style={styles.toggleBtn} onClick={() => setExpanded(!expanded)}>
+            {expanded ? "Show less" : "Read more"}
+          </button>
+        )}
+
+        {/* Additional Images */}
+        {entry.images && entry.images.length > 1 && (
+          <div style={styles.cardGallery}>
+            {entry.images.slice(1).map((img, i) => (
+              <img key={i} src={img.data} alt={img.name} style={styles.galleryImg} />
+            ))}
+          </div>
+        )}
+
+        {/* Attachments */}
+        {entry.attachments && entry.attachments.length > 0 && (
+          <div style={styles.attachmentBox}>
+            {entry.attachments.map((att, i) => (
+              <a key={i} href={att.data} download={att.name} style={styles.attachmentItem}>
+                📎 {att.name}
+              </a>
+            ))}
+          </div>
+        )}
+
+        {/* Footer Actions */}
+        <div style={styles.cardFooter}>
+          <button style={styles.commentBtn} onClick={() => setShowComments(!showComments)}>
+            💬 {comments.length} {comments.length === 1 ? 'Comment' : 'Comments'}
+          </button>
+        </div>
+
+        {/* Comments Section */}
+        {showComments && (
+          <div style={styles.commentsBox}>
+            {comments.length > 0 && (
+              <div style={styles.commentsList}>
+                {comments.map((comment) => (
+                  <div key={comment.id} style={styles.comment}>
+                    <div style={styles.commentHeader}>
+                      <span style={styles.commentAuthor}>{comment.name}</span>
+                      <span style={styles.commentTime}>
+                        {new Date(comment.timestamp).toLocaleDateString("en-CA", { month: "short", day: "numeric" })}
+                      </span>
+                    </div>
+                    <p style={styles.commentText}>{comment.text}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={styles.commentForm}>
+              <input
+                style={styles.commentInput}
+                placeholder="Name (optional)"
+                value={commentName}
+                onChange={(e) => setCommentName(e.target.value)}
+              />
+              <textarea
+                style={styles.commentTextarea}
+                placeholder="Leave feedback..."
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+              />
+              <button style={styles.commentSubmit} onClick={submitComment} disabled={!commentText.trim()}>
+                Post
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </article>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EDITOR VIEW
+// ═══════════════════════════════════════════════════════════════════════════
+function EditorView({
+  form,
+  setForm,
+  onSave,
+  onCancel,
+  onFileInput,
+  fileInputRef,
+  imageInputRef,
+  attachmentInputRef,
+  onImageUpload,
+  onAttachmentUpload,
+  removeImage,
+  removeAttachment,
+  fileStatus,
+  uploading,
+  isEditing,
+}) {
+  const wordCount = form.body.trim() ? form.body.trim().split(/\s+/).length : 0;
+
+  return (
+    <div style={styles.editorWrap}>
+      <div style={styles.editorHeader}>
+        <h2 style={styles.editorTitle}>{isEditing ? "Edit Post" : "New Post"}</h2>
+        <button style={styles.cancelBtn} onClick={onCancel}>← Back</button>
+      </div>
+
+      <div style={styles.editorForm}>
+        {/* Title */}
+        <label style={styles.label}>
+          Title
+          <input
+            style={styles.input}
+            type="text"
+            placeholder="Post title..."
+            value={form.title}
+            onChange={(e) => setForm({ ...form, title: e.target.value })}
+          />
+        </label>
+
+        {/* Date */}
+        <label style={styles.label}>
+          Date
+          <input
+            style={styles.input}
+            type="date"
+            value={form.date}
+            onChange={(e) => setForm({ ...form, date: e.target.value })}
+          />
+        </label>
+
+        {/* Import Text */}
+        <div style={styles.importBox}>
+          <input ref={fileInputRef} type="file" accept=".pdf,.docx" onChange={onFileInput} style={{ display: "none" }} />
+          <button style={styles.importBtn} onClick={() => fileInputRef.current?.click()}>
+            {uploading ? "⟳ Importing..." : "📄 Import from PDF/DOCX"}
+          </button>
+          {fileStatus && <span style={styles.importStatus}>{fileStatus}</span>}
+        </div>
+
+        {/* Body */}
+        <label style={styles.label}>
+          Content
+          <textarea
+            style={styles.textarea}
+            placeholder="Write your thoughts..."
+            value={form.body}
+            onChange={(e) => setForm({ ...form, body: e.target.value })}
+          />
+          <span style={styles.wordCount}>{wordCount} words</span>
+        </label>
+
+        {/* Images */}
+        <div style={styles.mediaSection}>
+          <input ref={imageInputRef} type="file" accept="image/*" multiple onChange={onImageUpload} style={{ display: "none" }} />
+          <button style={styles.mediaBtn} onClick={() => imageInputRef.current?.click()}>
+            🖼️ Add Images
+          </button>
+          {form.images.length > 0 && (
+            <div style={styles.previewGrid}>
+              {form.images.map((img, i) => (
+                <div key={i} style={styles.previewItem}>
+                  <img src={img.data} alt={img.name} style={styles.previewImg} />
+                  <button style={styles.removeBtn} onClick={() => removeImage(i)}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Attachments */}
+        <div style={styles.mediaSection}>
+          <input ref={attachmentInputRef} type="file" multiple onChange={onAttachmentUpload} style={{ display: "none" }} />
+          <button style={styles.mediaBtn} onClick={() => attachmentInputRef.current?.click()}>
+            📎 Add Files
+          </button>
+          {form.attachments.length > 0 && (
+            <div style={styles.attachmentPreview}>
+              {form.attachments.map((att, i) => (
+                <div key={i} style={styles.attachmentPreviewItem}>
+                  <span>📎 {att.name}</span>
+                  <button style={styles.removeAttachmentBtn} onClick={() => removeAttachment(i)}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Save */}
+        <div style={styles.editorFooter}>
+          <button style={styles.saveBtn} onClick={onSave} disabled={!form.body.trim() || !form.title.trim()}>
+            {isEditing ? "Update Post" : "Publish Post"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STYLES
+// ═══════════════════════════════════════════════════════════════════════════
+const styles = {
+  root: {
+    fontFamily: "'Lora', 'Georgia', serif",
+    minHeight: "100vh",
+    background: "linear-gradient(to bottom, #f8fafb 0%, #f5f8fa 100%)",
+    color: "#3a3a3a",
+    position: "relative",
+  },
+  bgPattern: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    width: "100%",
+    height: "100%",
+    background: `
+      radial-gradient(circle at 20% 30%, rgba(173, 216, 230, 0.08) 0%, transparent 50%),
+      radial-gradient(circle at 80% 70%, rgba(200, 210, 220, 0.06) 0%, transparent 50%)
+    `,
+    pointerEvents: "none",
+    zIndex: 0,
+  },
+  // Music Player
+  musicToggle: {
+    position: "fixed",
+    bottom: 32,
+    right: 32,
+    width: 58,
+    height: 58,
+    borderRadius: "50%",
+    background: "linear-gradient(135deg, #d4e4f0 0%, #c8d8e4 100%)",
+    border: "1px solid rgba(173, 216, 230, 0.3)",
+    color: "#5a7a8a",
+    fontSize: 22,
+    cursor: "pointer",
+    zIndex: 1000,
+    boxShadow: "0 4px 20px rgba(173, 216, 230, 0.2)",
+    transition: "all 0.3s",
+  },
+  musicPlayer: {
+    position: "fixed",
+    bottom: 105,
+    right: 32,
+    width: 280,
+    background: "rgba(255, 255, 255, 0.95)",
+    backdropFilter: "blur(20px)",
+    borderRadius: 16,
+    padding: 26,
+    border: "1px solid rgba(173, 216, 230, 0.25)",
+    boxShadow: "0 8px 32px rgba(100, 130, 150, 0.15)",
+    zIndex: 1000,
+  },
+  musicPlayerHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+    paddingBottom: 14,
+    borderBottom: "1px solid rgba(173, 216, 230, 0.2)",
+  },
+  musicPlayerTitle: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 11,
+    fontWeight: 600,
+    color: "#8a9aa8",
+    letterSpacing: "2px",
+    textTransform: "uppercase",
+  },
+  musicClose: {
+    background: "none",
+    border: "none",
+    fontSize: 24,
+    color: "#b8c8d4",
+    cursor: "pointer",
+    padding: 0,
+    lineHeight: 1,
+  },
+  trackInfo: {
+    marginBottom: 16,
+    display: "flex",
+    flexDirection: "column",
+    gap: 5,
+  },
+  trackName: {
+    fontFamily: "'Lora', serif",
+    fontSize: 16,
+    color: "#3a3a3a",
+    fontStyle: "italic",
+  },
+  trackNumber: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 11,
+    color: "#a8b8c4",
+    fontWeight: 500,
+  },
+  musicControls: {
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 16,
+  },
+  musicBtn: {
+    background: "transparent",
+    border: "none",
+    fontSize: 18,
+    color: "#8a9aa8",
+    cursor: "pointer",
+    padding: 8,
+    transition: "color 0.2s",
+  },
+  musicBtnPlay: {
+    background: "linear-gradient(135deg, #7ab8d4 0%, #6a9eb8 100%)",
+    border: "none",
+    fontSize: 16,
+    color: "#fff",
+    cursor: "pointer",
+    width: 46,
+    height: 46,
+    borderRadius: "50%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "0 3px 14px rgba(122, 184, 212, 0.3)",
+    transition: "all 0.2s",
+  },
+  // Header
+  header: {
+    borderBottom: "1px solid rgba(173, 216, 230, 0.2)",
+    background: "rgba(255, 255, 255, 0.95)",
+    backdropFilter: "blur(12px)",
+    position: "sticky",
+    top: 0,
+    zIndex: 100,
+    padding: "30px 40px",
+  },
+  headerContent: {
+    maxWidth: 1400,
+    margin: "0 auto",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  headerLeft: {
+    cursor: "pointer",
+  },
+  siteName: {
+    fontSize: 34,
+    fontWeight: 600,
+    margin: 0,
+    letterSpacing: "-0.5px",
+    color: "#5a7a8a",
+    fontStyle: "italic",
+  },
+  tagline: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 12,
+    color: "#8a9aa8",
+    margin: "6px 0 0 0",
+    letterSpacing: "1.8px",
+    textTransform: "uppercase",
+    fontWeight: 500,
+  },
+  menuToggle: {
+    background: "rgba(212, 228, 240, 0.4)",
+    border: "1px solid rgba(173, 216, 230, 0.3)",
+    color: "#5a7a8a",
+    fontSize: 18,
+    padding: "11px 20px",
+    borderRadius: 10,
+    cursor: "pointer",
+    fontFamily: "'DM Sans', sans-serif",
+    fontWeight: 600,
+    transition: "all 0.2s",
+  },
+  // Navigation
+  nav: {
+    background: "rgba(248, 250, 252, 0.95)",
+    borderBottom: "1px solid rgba(173, 216, 230, 0.15)",
+    overflow: "hidden",
+    transition: "max-height 0.3s ease",
+  },
+  navInner: {
+    maxWidth: 1400,
+    margin: "0 auto",
+    padding: "34px 40px",
+    display: "flex",
+    gap: 80,
+  },
+  navGroup: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  },
+  navGroupTitle: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 11,
+    color: "#a8b8c4",
+    letterSpacing: "2.2px",
+    textTransform: "uppercase",
+    marginBottom: 12,
+    fontWeight: 700,
+  },
+  navBtn: {
+    background: "transparent",
+    border: "none",
+    color: "#6a7a88",
+    padding: "13px 18px",
+    textAlign: "left",
+    cursor: "pointer",
+    borderRadius: 12,
+    display: "flex",
+    alignItems: "center",
+    gap: 14,
+    transition: "all 0.2s",
+    fontFamily: "'Lora', serif",
+    fontSize: 15,
+  },
+  navBtnActive: {
+    background: "rgba(173, 216, 230, 0.12)",
+    color: "#3a3a3a",
+    boxShadow: "0 2px 10px rgba(173, 216, 230, 0.15)",
+  },
+  navIcon: {
+    fontSize: 20,
+  },
+  navLabel: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 3,
+  },
+  navSubtitle: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 10,
+    color: "#a8b8c4",
+    letterSpacing: "1px",
+    fontWeight: 400,
+  },
+  // Main
+  main: {
+    maxWidth: 1400,
+    margin: "0 auto",
+    padding: "64px 40px",
+    position: "relative",
+    zIndex: 1,
+  },
+  // Grid View
+  gridContainer: {},
+  sectionHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 48,
+    paddingBottom: 28,
+    borderBottom: "1px solid rgba(173, 216, 230, 0.2)",
+  },
+  sectionTitleRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 18,
+  },
+  sectionIcon: {
+    fontSize: 44,
+    opacity: 0.8,
+  },
+  sectionTitle: {
+    fontSize: 38,
+    fontWeight: 600,
+    margin: 0,
+    color: "#3a3a3a",
+    letterSpacing: "-0.5px",
+    fontStyle: "italic",
+  },
+  sectionSubtitle: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 12,
+    color: "#8a9aa8",
+    margin: "6px 0 0 0",
+    letterSpacing: "1.8px",
+    fontWeight: 500,
+  },
+  newEntryBtn: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 13,
+    background: "linear-gradient(135deg, #7ab8d4 0%, #6a9eb8 100%)",
+    color: "#fff",
+    border: "none",
+    borderRadius: 12,
+    padding: "15px 30px",
+    cursor: "pointer",
+    fontWeight: 700,
+    letterSpacing: "0.5px",
+    transition: "all 0.3s",
+    boxShadow: "0 3px 14px rgba(122, 184, 212, 0.25)",
+  },
+  // Grid
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(400px, 1fr))",
+    gap: 32,
+  },
+  // Card
+  card: {
+    background: "#fff",
+    border: "1px solid rgba(173, 216, 230, 0.25)",
+    borderRadius: 16,
+    overflow: "hidden",
+    transition: "all 0.3s",
+    boxShadow: "0 3px 12px rgba(100, 130, 150, 0.08)",
+  },
+  cardCover: {
+    position: "relative",
+    width: "100%",
+    height: 250,
+    overflow: "hidden",
+  },
+  cardCoverImg: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+  },
+  cardCoverOverlay: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    width: "100%",
+    height: "45%",
+    background: "linear-gradient(to top, rgba(255,255,255,0.85) 0%, transparent 100%)",
+  },
+  cardContent: {
+    padding: 30,
+  },
+  cardHeader: {
+    marginBottom: 14,
+  },
+  cardTitle: {
+    fontSize: 22,
+    fontWeight: 600,
+    margin: "0 0 8px 0",
+    color: "#3a3a3a",
+    lineHeight: 1.35,
+    fontStyle: "italic",
+  },
+  cardDate: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 11,
+    color: "#a8b8c4",
+    letterSpacing: "1px",
+    fontWeight: 500,
+  },
+  cardBody: {
+    fontSize: 15,
+    lineHeight: 1.8,
+    color: "#5a5a5a",
+    margin: "0 0 14px 0",
+    whiteSpace: "pre-wrap",
+  },
+  toggleBtn: {
+    background: "transparent",
+    border: "none",
+    color: "#7ab8d4",
+    fontSize: 13,
+    cursor: "pointer",
+    padding: 0,
+    textDecoration: "underline",
+    fontFamily: "'DM Sans', sans-serif",
+    fontWeight: 600,
+  },
+  cardGallery: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))",
+    gap: 10,
+    marginTop: 18,
+  },
+  galleryImg: {
+    width: "100%",
+    height: 110,
+    objectFit: "cover",
+    borderRadius: 10,
+    border: "1px solid rgba(173, 216, 230, 0.25)",
+  },
+  attachmentBox: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    marginTop: 18,
+    padding: 16,
+    background: "rgba(173, 216, 230, 0.06)",
+    borderRadius: 12,
+    border: "1px solid rgba(173, 216, 230, 0.2)",
+  },
+  attachmentItem: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 12,
+    color: "#6a9eb8",
+    textDecoration: "none",
+    fontWeight: 600,
+  },
+  cardFooter: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 24,
+    paddingTop: 20,
+    borderTop: "1px solid rgba(173, 216, 230, 0.15)",
+  },
+  commentBtn: {
+    background: "rgba(173, 216, 230, 0.1)",
+    border: "1px solid rgba(173, 216, 230, 0.3)",
+    color: "#6a7a88",
+    fontSize: 13,
+    padding: "9px 16px",
+    borderRadius: 10,
+    cursor: "pointer",
+    fontFamily: "'DM Sans', sans-serif",
+    fontWeight: 600,
+  },
+  cardActions: {
+    display: "flex",
+    gap: 10,
+  },
+  editBtn: {
+    background: "transparent",
+    border: "1px solid rgba(173, 216, 230, 0.3)",
+    color: "#6a7a88",
+    fontSize: 12,
+    padding: "9px 16px",
+    borderRadius: 10,
+    cursor: "pointer",
+    fontFamily: "'DM Sans', sans-serif",
+    fontWeight: 600,
+  },
+  deleteBtn: {
+    background: "transparent",
+    border: "1px solid rgba(180, 180, 190, 0.3)",
+    color: "#9a9aa8",
+    fontSize: 12,
+    padding: "9px 16px",
+    borderRadius: 10,
+    cursor: "pointer",
+    fontFamily: "'DM Sans', sans-serif",
+    fontWeight: 600,
+  },
+  // Comments
+  commentsBox: {
+    marginTop: 24,
+    padding: 22,
+    background: "rgba(248, 250, 252, 0.8)",
+    borderRadius: 14,
+    border: "1px solid rgba(173, 216, 230, 0.2)",
+  },
+  commentsList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 14,
+    marginBottom: 18,
+  },
+  comment: {
+    padding: 15,
+    background: "#fff",
+    borderRadius: 12,
+    borderLeft: "3px solid rgba(122, 184, 212, 0.5)",
+    boxShadow: "0 2px 6px rgba(0,0,0,0.02)",
+  },
+  commentHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 8,
+  },
+  commentAuthor: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 12,
+    fontWeight: 700,
+    color: "#3a3a3a",
+  },
+  commentTime: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 11,
+    color: "#a8b8c4",
+    fontWeight: 500,
+  },
+  commentDelete: {
+    marginLeft: "auto",
+    background: "none",
+    border: "none",
+    fontSize: 18,
+    color: "#c8d4dc",
+    cursor: "pointer",
+    padding: 0,
+  },
+  commentText: {
+    fontSize: 14,
+    lineHeight: 1.75,
+    color: "#5a5a5a",
+    margin: 0,
+  },
+  commentForm: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  },
+  commentInput: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 13,
+    padding: "11px 14px",
+    background: "#fff",
+    border: "1px solid rgba(173, 216, 230, 0.3)",
+    borderRadius: 10,
+    color: "#3a3a3a",
+    outline: "none",
+    transition: "border-color 0.2s",
+  },
+  commentTextarea: {
+    fontFamily: "'Lora', serif",
+    fontSize: 14,
+    lineHeight: 1.75,
+    padding: "13px 14px",
+    background: "#fff",
+    border: "1px solid rgba(173, 216, 230, 0.3)",
+    borderRadius: 10,
+    color: "#3a3a3a",
+    minHeight: 85,
+    resize: "vertical",
+    outline: "none",
+    transition: "border-color 0.2s",
+  },
+  commentSubmit: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 12,
+    background: "linear-gradient(135deg, #7ab8d4 0%, #6a9eb8 100%)",
+    color: "#fff",
+    border: "none",
+    borderRadius: 10,
+    padding: "11px 22px",
+    cursor: "pointer",
+    alignSelf: "flex-end",
+    fontWeight: 700,
+    boxShadow: "0 3px 12px rgba(122, 184, 212, 0.25)",
+  },
+  // Empty State
+  emptyState: {
+    textAlign: "center",
+    padding: "130px 0",
+  },
+  emptyIcon: {
+    fontSize: 64,
+    marginBottom: 24,
+    opacity: 0.25,
+  },
+  emptyText: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 14,
+    color: "#a8b8c4",
+    marginBottom: 28,
+  },
+  emptyBtn: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 13,
+    background: "linear-gradient(135deg, #7ab8d4 0%, #6a9eb8 100%)",
+    color: "#fff",
+    border: "none",
+    borderRadius: 12,
+    padding: "15px 30px",
+    cursor: "pointer",
+    fontWeight: 700,
+    boxShadow: "0 3px 14px rgba(122, 184, 212, 0.25)",
+  },
+  // Editor
+  editorWrap: {
+    maxWidth: 820,
+    margin: "0 auto",
+  },
+  editorHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 40,
+  },
+  editorTitle: {
+    fontSize: 38,
+    fontWeight: 600,
+    margin: 0,
+    color: "#3a3a3a",
+    fontStyle: "italic",
+  },
+  editorForm: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 28,
+  },
+  label: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 11,
+    letterSpacing: "1.8px",
+    textTransform: "uppercase",
+    color: "#8a9aa8",
+    fontWeight: 700,
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  },
+  input: {
+    fontFamily: "'Lora', serif",
+    fontSize: 17,
+    padding: "15px 18px",
+    background: "#fff",
+    border: "1px solid rgba(173, 216, 230, 0.3)",
+    borderRadius: 12,
+    color: "#3a3a3a",
+    outline: "none",
+    transition: "border-color 0.2s",
+  },
+  textarea: {
+    fontFamily: "'Lora', serif",
+    fontSize: 16,
+    lineHeight: 1.8,
+    padding: "18px",
+    background: "#fff",
+    border: "1px solid rgba(173, 216, 230, 0.3)",
+    borderRadius: 12,
+    color: "#3a3a3a",
+    minHeight: 330,
+    resize: "vertical",
+    outline: "none",
+    transition: "border-color 0.2s",
+  },
+  wordCount: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 12,
+    color: "#a8b8c4",
+    marginTop: 8,
+    fontWeight: 500,
+  },
+  importBox: {
+    display: "flex",
+    alignItems: "center",
+    gap: 14,
+  },
+  importBtn: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 12,
+    background: "rgba(173, 216, 230, 0.1)",
+    color: "#6a7a88",
+    border: "1px solid rgba(173, 216, 230, 0.3)",
+    borderRadius: 10,
+    padding: "12px 20px",
+    cursor: "pointer",
+    fontWeight: 700,
+  },
+  importStatus: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 12,
+    color: "#8a9aa8",
+    fontWeight: 500,
+  },
+  mediaSection: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 14,
+  },
+  mediaBtn: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 12,
+    background: "rgba(173, 216, 230, 0.1)",
+    color: "#6a7a88",
+    border: "1px solid rgba(173, 216, 230, 0.3)",
+    borderRadius: 10,
+    padding: "12px 20px",
+    cursor: "pointer",
+    alignSelf: "flex-start",
+    fontWeight: 700,
+  },
+  previewGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(155px, 1fr))",
+    gap: 14,
+  },
+  previewItem: {
+    position: "relative",
+  },
+  previewImg: {
+    width: "100%",
+    height: 135,
+    objectFit: "cover",
+    borderRadius: 12,
+    border: "1px solid rgba(173, 216, 230, 0.3)",
+  },
+  removeBtn: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    background: "rgba(255, 255, 255, 0.95)",
+    border: "1px solid rgba(173, 216, 230, 0.3)",
+    color: "#6a7a88",
+    borderRadius: "50%",
+    width: 28,
+    height: 28,
+    cursor: "pointer",
+    fontSize: 16,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
+    fontWeight: 700,
+  },
+  attachmentPreview: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  },
+  attachmentPreviewItem: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "13px 16px",
+    background: "rgba(173, 216, 230, 0.06)",
+    borderRadius: 10,
+    border: "1px solid rgba(173, 216, 230, 0.2)",
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 12,
+    color: "#6a7a88",
+    fontWeight: 600,
+  },
+  removeAttachmentBtn: {
+    background: "none",
+    border: "none",
+    color: "#c8d4dc",
+    fontSize: 18,
+    cursor: "pointer",
+    padding: 0,
+  },
+  editorFooter: {
+    display: "flex",
+    justifyContent: "flex-end",
+    paddingTop: 28,
+    borderTop: "1px solid rgba(173, 216, 230, 0.2)",
+  },
+  saveBtn: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 13,
+    background: "linear-gradient(135deg, #7ab8d4 0%, #6a9eb8 100%)",
+    color: "#fff",
+    border: "none",
+    borderRadius: 12,
+    padding: "16px 36px",
+    cursor: "pointer",
+    fontWeight: 700,
+    letterSpacing: "0.5px",
+    boxShadow: "0 3px 14px rgba(122, 184, 212, 0.3)",
+  },
+  cancelBtn: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 13,
+    background: "transparent",
+    color: "#8a9aa8",
+    border: "1px solid rgba(173, 216, 230, 0.3)",
+    borderRadius: 12,
+    padding: "13px 26px",
+    cursor: "pointer",
+    fontWeight: 600,
+  },
+  // Footer
+  footer: {
+    borderTop: "1px solid rgba(173, 216, 230, 0.2)",
+    background: "rgba(248, 250, 252, 0.95)",
+    padding: 32,
+    marginTop: 100,
+  },
+  footerContent: {
+    maxWidth: 1400,
+    margin: "0 auto",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 12,
+    color: "#8a9aa8",
+    fontWeight: 500,
+  },
+  footerLink: {
+    color: "#6a9eb8",
+    textDecoration: "none",
+    borderBottom: "1px solid rgba(173, 216, 230, 0.4)",
+    fontWeight: 600,
+    paddingBottom: 2,
+  },
+  // About Section
+  aboutContent: {
+    maxWidth: 900,
+    margin: "0 auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: 32,
+  },
+  aboutCard: {
+    background: "#fff",
+    border: "1px solid rgba(173, 216, 230, 0.25)",
+    borderRadius: 16,
+    padding: 40,
+    boxShadow: "0 3px 12px rgba(100, 130, 150, 0.08)",
+  },
+  aboutCardTitle: {
+    fontFamily: "'Lora', serif",
+    fontSize: 26,
+    fontWeight: 600,
+    color: "#5a7a8a",
+    margin: "0 0 24px 0",
+    fontStyle: "italic",
+  },
+  aboutText: {
+    fontFamily: "'Lora', serif",
+    fontSize: 16,
+    lineHeight: 1.85,
+    color: "#5a5a5a",
+    margin: "0 0 18px 0",
+  },
+  aboutConnectLink: {
+    color: "#6a9eb8",
+    cursor: "pointer",
+    borderBottom: "2px solid rgba(106, 158, 184, 0.3)",
+    paddingBottom: 2,
+    transition: "all 0.2s",
+    fontStyle: "italic",
+  },
+  // Contact Section
+  contactContent: {
+    maxWidth: 700,
+    margin: "0 auto",
+  },
+  contactCard: {
+    background: "#fff",
+    border: "1px solid rgba(173, 216, 230, 0.25)",
+    borderRadius: 16,
+    padding: 50,
+    boxShadow: "0 3px 12px rgba(100, 130, 150, 0.08)",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 36,
+  },
+  contactIntro: {
+    fontFamily: "'Lora', serif",
+    fontSize: 20,
+    color: "#5a7a8a",
+    margin: 0,
+    fontStyle: "italic",
+    textAlign: "center",
+  },
+  contactIconsRow: {
+    display: "flex",
+    gap: 48,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  contactIconLink: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 14,
+    textDecoration: "none",
+    transition: "transform 0.2s",
+    cursor: "pointer",
+  },
+  contactIconCircle: {
+    width: 90,
+    height: 90,
+    borderRadius: "50%",
+    background: "linear-gradient(135deg, rgba(173, 216, 230, 0.1) 0%, rgba(122, 184, 212, 0.15) 100%)",
+    border: "2px solid rgba(173, 216, 230, 0.3)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    transition: "all 0.3s",
+    boxShadow: "0 2px 10px rgba(100, 130, 150, 0.08)",
+  },
+  contactIcon: {
+    fontSize: 38,
+  },
+  contactIconLabel: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 13,
+    color: "#6a7a88",
+    fontWeight: 600,
+    letterSpacing: "0.5px",
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FONTS
+// ═══════════════════════════════════════════════════════════════════════════
+(function () {
+  const link = document.createElement("link");
+  link.href = "https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;0,700;1,400;1,600&family=DM+Sans:wght@400;500;600;700&display=swap";
+  link.rel = "stylesheet";
+  document.head.appendChild(link);
+})();
+    
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
