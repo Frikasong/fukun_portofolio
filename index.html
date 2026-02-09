@@ -251,14 +251,24 @@ async function saveEntries(entries) {
 async function loadComments() {
   try {
     const result = await window.storage.get(COMMENTS_KEY, true); // true = shared storage
+    console.log('Loaded comments:', result);
     return result ? JSON.parse(result.value) : {};
-  } catch {
+  } catch (error) {
+    console.error('Error loading comments:', error);
     return {};
   }
 }
 
 async function saveComments(comments) {
-  await window.storage.set(COMMENTS_KEY, JSON.stringify(comments), true); // true = shared storage
+  try {
+    console.log('Saving comments:', comments);
+    const result = await window.storage.set(COMMENTS_KEY, JSON.stringify(comments), true); // true = shared storage
+    console.log('Comments saved successfully:', result);
+    return result;
+  } catch (error) {
+    console.error('Error saving comments:', error);
+    throw error;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -497,9 +507,9 @@ function App() {
       )}
 
       {/* Floating Quick Navigation - Mobile */}
-      {isScrolled && view === "grid" && (
+      {view === "grid" && (
         <>
-          {/* Mobile menu toggle button */}
+          {/* Mobile menu toggle button - always visible on mobile */}
           <button 
             style={styles.mobileFloatingToggle}
             className="mobile-floating-toggle"
