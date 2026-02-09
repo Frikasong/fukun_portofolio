@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Welcome to Fukun's World</title>
+  <title>Fukun - Portfolio</title>
   
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -656,14 +656,16 @@ function GridView({ section, entries, comments, onNew, onEdit, onDelete, onAddCo
       </div>
 
       {/* Entries Grid */}
-      {entries.length === 0 ? (
+      {entries.filter(entry => entry.published !== false).length === 0 ? (
         <div style={styles.emptyState}>
           <div style={styles.emptyIcon}>{section.icon}</div>
           <p style={styles.emptyText}>No posts yet in this section. Check back soon!</p>
         </div>
       ) : (
         <div style={styles.grid}>
-          {entries.map((entry) => (
+          {entries
+            .filter(entry => entry.published !== false)
+            .map((entry) => (
             <EntryCard
               key={entry.id}
               entry={entry}
