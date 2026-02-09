@@ -1,0 +1,8 @@
+{
+  "id": "test-001",
+  "section": "law",
+  "title": "Test Post",
+  "date": "2024-02-08",
+  "body": "This is a test to see if posts work.",
+  "published": true
+}
