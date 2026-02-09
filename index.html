@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -112,6 +113,58 @@ function fileToBase64(file) {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+// ─── Markdown Formatter ─────────────────────────────────────────────────────
+function formatMarkdown(text) {
+  if (!text) return "";
+  
+  // Convert \n\n to actual paragraph breaks
+  let formatted = text.split('\n\n').map(para => {
+    // Bold: **text** or __text__
+    para = para.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    para = para.replace(/__(.+?)__/g, '<strong>$1</strong>');
+    
+    // Italic: *text* or _text_ (but not in URLs or already bolded)
+    para = para.replace(/(?<!\*)\*([^*]+?)\*(?!\*)/g, '<em>$1</em>');
+    para = para.replace(/(?<!_)_([^_]+?)_(?!_)/g, '<em>$1</em>');
+    
+    // Headers: ## Text
+    if (para.startsWith('### ')) {
+      return '<h4 style="font-family: \'Lora\', serif; font-size: 18px; font-weight: 600; color: #3a3a3a; margin: 20px 0 12px 0;">' + para.slice(4) + '</h4>';
+    }
+    if (para.startsWith('## ')) {
+      return '<h3 style="font-family: \'Lora\', serif; font-size: 22px; font-weight: 600; color: #3a3a3a; margin: 24px 0 14px 0;">' + para.slice(3) + '</h3>';
+    }
+    if (para.startsWith('# ')) {
+      return '<h2 style="font-family: \'Lora\', serif; font-size: 26px; font-weight: 600; color: #3a3a3a; margin: 28px 0 16px 0;">' + para.slice(2) + '</h2>';
+    }
+    
+    // Lists: - item or * item
+    if (para.match(/^[-*] /)) {
+      const items = para.split('\n').filter(line => line.trim()).map(line => {
+        const content = line.replace(/^[-*] /, '');
+        return '<li style="margin: 8px 0;">' + content + '</li>';
+      }).join('');
+      return '<ul style="margin: 16px 0; padding-left: 24px;">' + items + '</ul>';
+    }
+    
+    // Numbered lists: 1. item
+    if (para.match(/^\d+\. /)) {
+      const items = para.split('\n').filter(line => line.trim()).map(line => {
+        const content = line.replace(/^\d+\. /, '');
+        return '<li style="margin: 8px 0;">' + content + '</li>';
+      }).join('');
+      return '<ol style="margin: 16px 0; padding-left: 24px;">' + items + '</ol>';
+    }
+    
+    // Single line breaks within paragraphs
+    para = para.replace(/\n/g, '<br>');
+    
+    return '<p style="margin: 16px 0; line-height: 1.8;">' + para + '</p>';
+  }).join('');
+  
+  return formatted;
 }
 
 // ─── GitHub Configuration ───────────────────────────────────────────────────
@@ -560,7 +613,7 @@ function GridView({ section, entries, comments, onNew, onEdit, onDelete, onAddCo
               Fukun is a J.D. student at Osgoode Hall Law School in Class of 2027. She is interested in the intersection of law and tech, especially in the edgy development of legal technology. She is keen in investing and general tech topics.
             </p>
             <p style={styles.aboutText}>
-              She graduated from Tsinghua University with Bachelor of Science degree in Psychology and Juris Master degree. She also worked in a private equity firm on legal side.
+              She graduated from Tsinghua University with Bachelor of Science Degree in Psychology and Juris Master degree. She also worked in a private equity firm on legal side.
             </p>
           </div>
           <div style={styles.aboutCard}>
@@ -720,7 +773,10 @@ function EntryCard({ entry, comments, onEdit, onDelete, onAddComment, onDeleteCo
         </div>
 
         {/* Body Preview */}
-        <p style={styles.cardBody}>{expanded ? entry.body : preview}</p>
+        <div 
+          style={styles.cardBody} 
+          dangerouslySetInnerHTML={{ __html: expanded ? formatMarkdown(entry.body) : formatMarkdown(preview) }}
+        />
         {entry.body.length > 180 && (
           <button style={styles.toggleBtn} onClick={() => setExpanded(!expanded)}>
             {expanded ? "Show less" : "Read more"}
@@ -1215,9 +1271,11 @@ const styles = {
   },
   // Grid
   grid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(400px, 1fr))",
-    gap: 32,
+    display: "flex",
+    flexDirection: "column",
+    gap: 24,
+    maxWidth: "1200px",
+    margin: "0 auto",
   },
   // Card
   card: {
@@ -1227,6 +1285,7 @@ const styles = {
     overflow: "hidden",
     transition: "all 0.3s",
     boxShadow: "0 3px 12px rgba(100, 130, 150, 0.08)",
+    width: "100%",
   },
   cardCover: {
     position: "relative",
@@ -1270,10 +1329,11 @@ const styles = {
   },
   cardBody: {
     fontSize: 15,
-    lineHeight: 1.8,
+    lineHeight: 1.7,
     color: "#5a5a5a",
     margin: "0 0 14px 0",
-    whiteSpace: "pre-wrap",
+    maxHeight: "280px",
+    overflow: "hidden",
   },
   toggleBtn: {
     background: "transparent",
