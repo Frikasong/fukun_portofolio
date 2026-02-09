@@ -130,10 +130,14 @@ async function loadEntriesFromGitHub() {
       try {
         // Get list of files in the section folder
         const response = await fetch(
-          `https://api.github.com/repos/${GITHUB_USERNAME}/${GITHUB_REPO}/contents/posts/${section}?ref=${GITHUB_BRANCH}`
+          `https://api.github.com/repos/${GITHUB_USERNAME}/${GITHUB_REPO}/contents/posts/${section}?ref=${GITHUB_BRANCH}`,
+          { headers: { 'Accept': 'application/vnd.github.v3+json' } }
         );
         
-        if (!response.ok) continue; // Skip if folder doesn't exist yet
+        if (!response.ok) {
+          console.log(`Section ${section} not found, skipping...`);
+          continue; // Skip if folder doesn't exist yet
+        }
         
         const files = await response.json();
         
@@ -150,10 +154,11 @@ async function loadEntriesFromGitHub() {
           }
         }
       } catch (e) {
-        console.error(`Error loading section ${section}:`, e);
+        console.log(`No posts in ${section} yet`);
       }
     }
     
+    console.log(`Loaded ${allEntries.length} posts from GitHub`);
     return allEntries;
   } catch (error) {
     console.error('Error loading entries from GitHub:', error);
@@ -163,17 +168,25 @@ async function loadEntriesFromGitHub() {
 
 async function loadEntries() {
   // Try to load from GitHub first
-  const githubEntries = await loadEntriesFromGitHub();
-  
-  if (githubEntries.length > 0) {
-    return githubEntries;
+  try {
+    const githubEntries = await loadEntriesFromGitHub();
+    
+    if (githubEntries.length > 0) {
+      console.log('Using GitHub posts');
+      return githubEntries;
+    }
+  } catch (e) {
+    console.log('GitHub loading failed, using localStorage');
   }
   
-  // Fallback to localStorage if GitHub has no posts yet
+  // Fallback to localStorage
   try {
     const result = await window.storage.get(ENTRIES_KEY);
-    return result ? JSON.parse(result.value) : [];
+    const localEntries = result ? JSON.parse(result.value) : [];
+    console.log(`Using ${localEntries.length} localStorage posts`);
+    return localEntries;
   } catch {
+    console.log('No posts found');
     return [];
   }
 }
@@ -547,13 +560,13 @@ function GridView({ section, entries, comments, onNew, onEdit, onDelete, onAddCo
               Fukun is a J.D. student at Osgoode Hall Law School in Class of 2027. She is interested in the intersection of law and tech, especially in the edgy development of legal technology. She is keen in investing and general tech topics.
             </p>
             <p style={styles.aboutText}>
-              She graduated from Tsinghua University with Bachelor of Science degree in Psychology and Juris Master degree. She also worked in a private equity firm on legal side.
+              She graduated from Tsinghua University with Bachelor in Science degree of Psychology and Juris Master degree. She also worked in a private equity firm on legal side.
             </p>
           </div>
           <div style={styles.aboutCard}>
             <h3 style={styles.aboutCardTitle}>Interests</h3>
             <p style={styles.aboutText}>
-              In her spare time, she loves tennis, listening to all types of music with a special love to jazz, photography, reading, and pottery.
+              In her spare time, she loves tennis, listening to all types of music with a special love to jazz, photography, reading and pottery.
             </p>
             <p style={styles.aboutText}>
               She is more than happy to chat with people from different backgrounds, feel free to{' '}
@@ -640,17 +653,13 @@ function GridView({ section, entries, comments, onNew, onEdit, onDelete, onAddCo
             {section.subtitle && <p style={styles.sectionSubtitle}>{section.subtitle}</p>}
           </div>
         </div>
-        <button style={styles.newEntryBtn} onClick={onNew}>
-          + New Post
-        </button>
       </div>
 
       {/* Entries Grid */}
       {entries.length === 0 ? (
         <div style={styles.emptyState}>
           <div style={styles.emptyIcon}>{section.icon}</div>
-          <p style={styles.emptyText}>No posts yet in this section</p>
-          <button style={styles.emptyBtn} onClick={onNew}>Create First Post</button>
+          <p style={styles.emptyText}>No posts yet in this section. Check back soon!</p>
         </div>
       ) : (
         <div style={styles.grid}>
@@ -739,12 +748,8 @@ function EntryCard({ entry, comments, onEdit, onDelete, onAddComment, onDeleteCo
         {/* Footer Actions */}
         <div style={styles.cardFooter}>
           <button style={styles.commentBtn} onClick={() => setShowComments(!showComments)}>
-            💬 {comments.length}
+            💬 {comments.length} {comments.length === 1 ? 'Comment' : 'Comments'}
           </button>
-          <div style={styles.cardActions}>
-            <button style={styles.editBtn} onClick={() => onEdit(entry)}>Edit</button>
-            <button style={styles.deleteBtn} onClick={() => onDelete(entry.id)}>Delete</button>
-          </div>
         </div>
 
         {/* Comments Section */}
@@ -759,7 +764,6 @@ function EntryCard({ entry, comments, onEdit, onDelete, onAddComment, onDeleteCo
                       <span style={styles.commentTime}>
                         {new Date(comment.timestamp).toLocaleDateString("en-CA", { month: "short", day: "numeric" })}
                       </span>
-                      <button style={styles.commentDelete} onClick={() => onDeleteComment(entry.id, comment.id)}>×</button>
                     </div>
                     <p style={styles.commentText}>{comment.text}</p>
                   </div>
@@ -1815,4 +1819,3 @@ const styles = {
   </script>
 </body>
 </html>
-
