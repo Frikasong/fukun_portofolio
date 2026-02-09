@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>✨Welcome to Fukun's World✨</title>
+  <title>✨Welcome to Fukun Domain✨</title>
   
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -269,8 +269,9 @@ function App() {
   const [entries, setEntries] = useState([]);
   const [comments, setComments] = useState({});
   const [activeSection, setActiveSection] = useState("about");
-  const [view, setView] = useState("grid"); // "grid" | "editor"
+  const [view, setView] = useState("grid"); // "grid" | "editor" | "reading"
   const [editing, setEditing] = useState(null);
+  const [readingEntry, setReadingEntry] = useState(null); // For full-page reading view
   const [form, setForm] = useState({ title: "", date: "", body: "", images: [], attachments: [], section: "legal-tech" });
   const [menuOpen, setMenuOpen] = useState(false);
   
@@ -546,7 +547,15 @@ function App() {
 
       {/* Main Content */}
       <main style={styles.main}>
-        {view === "grid" ? (
+        {view === "reading" ? (
+          <ReadingView
+            entry={readingEntry}
+            comments={comments[readingEntry?.id] || []}
+            onBack={() => setView("grid")}
+            onAddComment={addComment}
+            onDeleteComment={deleteComment}
+          />
+        ) : view === "grid" ? (
           <GridView
             section={currentSection}
             entries={sectionEntries}
@@ -595,6 +604,116 @@ function App() {
 // ═══════════════════════════════════════════════════════════════════════════
 // GRID VIEW
 // ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
+// READING VIEW (Full Article Page)
+// ═══════════════════════════════════════════════════════════════════════════
+function ReadingView({ entry, comments, onBack, onAddComment, onDeleteComment }) {
+  const [commentName, setCommentName] = useState("");
+  const [commentText, setCommentText] = useState("");
+
+  if (!entry) return null;
+
+  const formattedDate = new Date(entry.date).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  const handleAddComment = () => {
+    if (!commentText.trim()) return;
+    onAddComment(entry.id, commentName, commentText);
+    setCommentName("");
+    setCommentText("");
+  };
+
+  return (
+    <div style={styles.readingContainer}>
+      {/* Back Button */}
+      <button style={styles.backBtn} onClick={onBack}>
+        ← Back to {entry.section}
+      </button>
+
+      {/* Article */}
+      <article style={styles.articleContainer}>
+        <header style={styles.articleHeader}>
+          <h1 style={styles.articleTitle}>{entry.title}</h1>
+          <time style={styles.articleDate}>{formattedDate}</time>
+        </header>
+
+        <div 
+          style={styles.articleBody}
+          dangerouslySetInnerHTML={{ __html: formatMarkdown(entry.body) }}
+        />
+
+        {/* Images */}
+        {entry.images && entry.images.length > 0 && (
+          <div style={styles.articleImages}>
+            {entry.images.map((img, i) => (
+              <img key={i} src={img.data || img.url} alt={img.name} style={styles.articleImage} />
+            ))}
+          </div>
+        )}
+
+        {/* Attachments */}
+        {entry.attachments && entry.attachments.length > 0 && (
+          <div style={styles.articleAttachments}>
+            <h3 style={{fontFamily: "'DM Sans', sans-serif", fontSize: 16, marginBottom: 12}}>Attachments</h3>
+            {entry.attachments.map((att, i) => (
+              <a key={i} href={att.data || att.url} download={att.name} style={styles.attachmentLink}>
+                📎 {att.name}
+              </a>
+            ))}
+          </div>
+        )}
+      </article>
+
+      {/* Comments Section */}
+      <div style={styles.commentsSection}>
+        <h3 style={styles.commentsTitle}>
+          💬 {comments.length} {comments.length === 1 ? 'Comment' : 'Comments'}
+        </h3>
+
+        {comments.length > 0 && (
+          <div style={styles.commentsList}>
+            {comments.map((comment) => (
+              <div key={comment.id} style={styles.commentItem}>
+                <div style={styles.commentHeader}>
+                  <strong style={styles.commentAuthor}>{comment.name || "Anonymous"}</strong>
+                  <span style={styles.commentTime}>
+                    {new Date(comment.timestamp).toLocaleDateString("en-CA", { month: "short", day: "numeric" })}
+                  </span>
+                </div>
+                <p style={styles.commentText}>{comment.text}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={styles.commentForm}>
+          <input
+            style={styles.commentInput}
+            placeholder="Name (optional)"
+            value={commentName}
+            onChange={(e) => setCommentName(e.target.value)}
+          />
+          <textarea
+            style={styles.commentTextarea}
+            placeholder="Leave a comment..."
+            value={commentText}
+            onChange={(e) => setCommentText(e.target.value)}
+          />
+          <button style={styles.commentSubmitBtn} onClick={handleAddComment}>
+            Post Comment
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GRID VIEW
+// ═══════════════════════════════════════════════════════════════════════════
 function GridView({ section, entries, comments, onNew, onEdit, onDelete, onAddComment, onDeleteComment, setActiveSection }) {
   // Special handling for About section
   if (section.id === "about") {
@@ -613,13 +732,13 @@ function GridView({ section, entries, comments, onNew, onEdit, onDelete, onAddCo
               Fukun is a J.D. student at Osgoode Hall Law School in Class of 2027. She is interested in the intersection of law and tech, especially in the edgy development of legal technology. She is keen in investing and general tech topics.
             </p>
             <p style={styles.aboutText}>
-              She graduated from Tsinghua University with Bachelor of Science Degree in Psychology and Juris Master degree. She also worked in a private equity firm on legal side.
+              She graduated from Tsinghua University with Bachelor of Science degree in Psychology and Juris Master degree. She also worked in a private equity firm on legal side.
             </p>
           </div>
           <div style={styles.aboutCard}>
             <h3 style={styles.aboutCardTitle}>Interests</h3>
             <p style={styles.aboutText}>
-              In her spare time, she loves tennis, listening to all types of music with a special love to jazz, photography, reading and pottery.
+              In her spare time, she loves tennis, listening to all types of music with a special love to jazz, photography, reading, and pottery.
             </p>
             <p style={styles.aboutText}>
               She is more than happy to chat with people from different backgrounds, feel free to{' '}
@@ -727,6 +846,10 @@ function GridView({ section, entries, comments, onNew, onEdit, onDelete, onAddCo
               onDelete={onDelete}
               onAddComment={onAddComment}
               onDeleteComment={onDeleteComment}
+              onClick={() => {
+                setReadingEntry(entry);
+                setView("reading");
+              }}
             />
           ))}
         </div>
@@ -738,7 +861,7 @@ function GridView({ section, entries, comments, onNew, onEdit, onDelete, onAddCo
 // ═══════════════════════════════════════════════════════════════════════════
 // ENTRY CARD
 // ═══════════════════════════════════════════════════════════════════════════
-function EntryCard({ entry, comments, onEdit, onDelete, onAddComment, onDeleteComment }) {
+function EntryCard({ entry, comments, onEdit, onDelete, onAddComment, onDeleteComment, onClick }) {
   const [expanded, setExpanded] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [commentName, setCommentName] = useState("");
@@ -767,21 +890,20 @@ function EntryCard({ entry, comments, onEdit, onDelete, onAddComment, onDeleteCo
 
       <div style={styles.cardContent}>
         {/* Header */}
-        <div style={styles.cardHeader}>
+        <div style={styles.cardHeader} onClick={onClick} style={{...styles.cardHeader, cursor: 'pointer'}}>
           <h3 style={styles.cardTitle}>{entry.title}</h3>
           <span style={styles.cardDate}>{formattedDate}</span>
         </div>
 
         {/* Body Preview */}
         <div 
-          style={styles.cardBody} 
-          dangerouslySetInnerHTML={{ __html: expanded ? formatMarkdown(entry.body) : formatMarkdown(preview) }}
+          style={{...styles.cardBody, cursor: 'pointer'}} 
+          onClick={onClick}
+          dangerouslySetInnerHTML={{ __html: formatMarkdown(preview) }}
         />
-        {entry.body.length > 180 && (
-          <button style={styles.toggleBtn} onClick={() => setExpanded(!expanded)}>
-            {expanded ? "Show less" : "Read more"}
-          </button>
-        )}
+        <button style={styles.toggleBtn} onClick={onClick}>
+          Read full article →
+        </button>
 
         {/* Additional Images */}
         {entry.images && entry.images.length > 1 && (
@@ -1863,6 +1985,165 @@ const styles = {
     color: "#6a7a88",
     fontWeight: 600,
     letterSpacing: "0.5px",
+  },
+  // Reading View
+  readingContainer: {
+    maxWidth: 900,
+    margin: "0 auto",
+    padding: "40px 20px",
+  },
+  backBtn: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 14,
+    background: "transparent",
+    color: "#6a9eb8",
+    border: "1px solid rgba(106, 158, 184, 0.3)",
+    borderRadius: 8,
+    padding: "10px 20px",
+    cursor: "pointer",
+    marginBottom: 32,
+    transition: "all 0.2s",
+    fontWeight: 600,
+  },
+  articleContainer: {
+    background: "#fff",
+    border: "1px solid rgba(173, 216, 230, 0.25)",
+    borderRadius: 16,
+    padding: "48px 56px",
+    marginBottom: 32,
+    boxShadow: "0 3px 12px rgba(100, 130, 150, 0.08)",
+  },
+  articleHeader: {
+    borderBottom: "2px solid rgba(173, 216, 230, 0.2)",
+    paddingBottom: 24,
+    marginBottom: 32,
+  },
+  articleTitle: {
+    fontFamily: "'Lora', serif",
+    fontSize: 42,
+    fontWeight: 600,
+    color: "#3a3a3a",
+    margin: "0 0 12px 0",
+    lineHeight: 1.3,
+  },
+  articleDate: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 14,
+    color: "#8a9aa8",
+    fontWeight: 500,
+  },
+  articleBody: {
+    fontFamily: "'Lora', serif",
+    fontSize: 18,
+    lineHeight: 1.8,
+    color: "#3a3a3a",
+  },
+  articleImages: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+    gap: 16,
+    marginTop: 32,
+  },
+  articleImage: {
+    width: "100%",
+    borderRadius: 12,
+    border: "1px solid rgba(173, 216, 230, 0.25)",
+  },
+  articleAttachments: {
+    marginTop: 32,
+    padding: 24,
+    background: "rgba(173, 216, 230, 0.05)",
+    borderRadius: 12,
+    border: "1px solid rgba(173, 216, 230, 0.2)",
+  },
+  attachmentLink: {
+    display: "block",
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 14,
+    color: "#6a9eb8",
+    textDecoration: "none",
+    padding: "8px 0",
+    borderBottom: "1px solid rgba(173, 216, 230, 0.15)",
+  },
+  commentsSection: {
+    background: "#fff",
+    border: "1px solid rgba(173, 216, 230, 0.25)",
+    borderRadius: 16,
+    padding: "32px 40px",
+    boxShadow: "0 3px 12px rgba(100, 130, 150, 0.08)",
+  },
+  commentsTitle: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 20,
+    fontWeight: 600,
+    color: "#3a3a3a",
+    marginBottom: 24,
+  },
+  commentsList: {
+    marginBottom: 32,
+  },
+  commentItem: {
+    padding: "16px 0",
+    borderBottom: "1px solid rgba(173, 216, 230, 0.15)",
+  },
+  commentHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  commentAuthor: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 14,
+    color: "#3a3a3a",
+    fontWeight: 600,
+  },
+  commentTime: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 12,
+    color: "#8a9aa8",
+  },
+  commentText: {
+    fontFamily: "'Lora', serif",
+    fontSize: 15,
+    lineHeight: 1.7,
+    color: "#5a5a5a",
+    margin: 0,
+  },
+  commentForm: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+  },
+  commentInput: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 14,
+    padding: "12px 16px",
+    border: "1px solid rgba(173, 216, 230, 0.3)",
+    borderRadius: 8,
+    outline: "none",
+  },
+  commentTextarea: {
+    fontFamily: "'Lora', serif",
+    fontSize: 15,
+    padding: "12px 16px",
+    border: "1px solid rgba(173, 216, 230, 0.3)",
+    borderRadius: 8,
+    minHeight: 100,
+    resize: "vertical",
+    outline: "none",
+  },
+  commentSubmitBtn: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 14,
+    background: "linear-gradient(135deg, #7ab8d4 0%, #6a9eb8 100%)",
+    color: "#fff",
+    border: "none",
+    borderRadius: 8,
+    padding: "12px 24px",
+    cursor: "pointer",
+    fontWeight: 600,
+    alignSelf: "flex-start",
   },
 };
 
