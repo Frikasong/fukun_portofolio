@@ -250,7 +250,7 @@ async function saveEntries(entries) {
 
 async function loadComments() {
   try {
-    const result = await window.storage.get(COMMENTS_KEY, true);
+    const result = await window.storage.get(COMMENTS_KEY, true); // true = shared storage
     return result ? JSON.parse(result.value) : {};
   } catch {
     return {};
@@ -258,7 +258,7 @@ async function loadComments() {
 }
 
 async function saveComments(comments) {
-  await window.storage.set(COMMENTS_KEY, JSON.stringify(comments), true);
+  await window.storage.set(COMMENTS_KEY, JSON.stringify(comments), true); // true = shared storage
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -474,7 +474,7 @@ function App() {
 
       {/* Floating Quick Navigation */}
       {isScrolled && view === "grid" && (
-        <div style={styles.floatingNav}>
+        <div style={styles.floatingNav} className="floating-nav-mobile-hide">
           <div style={styles.floatingNavTitle}>Quick Nav</div>
           {SECTIONS.map((section) => (
             <button
@@ -497,7 +497,7 @@ function App() {
 
       {/* Header */}
       <header style={styles.header}>
-        <div style={styles.headerContent}>
+        <div style={styles.headerContent} className="header-content-mobile">
           <div style={styles.headerLeft} onClick={() => { setView("grid"); setActiveSection("about"); }}>
             <h1 style={styles.siteName}>Fukun</h1>
             <p style={styles.tagline}>
@@ -584,7 +584,7 @@ function App() {
       </nav>
 
       {/* Main Content */}
-      <main style={styles.main}>
+      <main style={styles.main} className="main-mobile">
         {view === "reading" ? (
           <ReadingView
             entry={readingEntry}
@@ -631,7 +631,7 @@ function App() {
       {/* Footer */}
       <footer style={styles.footer}>
         <div style={styles.footerContent}>
-          <span>© 2026 Fukun · Osgoode Hall Law School</span>
+          <span>© 2026 Fukun · All Rights Reserved</span>
           <a href="mailto:frikasong@gmail.com" style={styles.footerLink}>
             frikasong@gmail.com
           </a>
@@ -660,16 +660,188 @@ function ReadingView({ entry, comments, onBack, onAddComment, onDeleteComment })
   });
 
   const handleAddComment = () => {
-    if (!commentText.trim()) return;
+    if (!commentName.trim()) {
+      alert("Please enter your name");
+      return;
+    }
+    if (!commentText.trim()) {
+      alert("Please enter a comment");
+      return;
+    }
     onAddComment(entry.id, commentName, commentText);
     setCommentName("");
     setCommentText("");
   };
 
   return (
-    <div style={styles.readingContainer}>
+    <div style={styles.readingContainer} className="reading-container-mobile">
       {/* Back Button */}
       <button style={styles.backBtn} onClick={onBack}>
+        ← Back to {entry.section}
+      </button>
+
+      {/* Article */}
+      <article style={styles.articleContainer} className="article-container-mobile">
+        <header style={styles.articleHeader}>
+          <h1 style={styles.articleTitle} className="article-title-mobile">{entry.title}</h1>
+          <time style={styles.articleDate}>{formattedDate}</time>
+        </header>
+
+        <div 
+          style={styles.articleBody}
+          className="article-body-mobile"
+          dangerouslySetInnerHTML={{ __html: formatMarkdown(entry.body) }}
+        />
+
+        {/* Images */}
+        {entry.images && entry.images.length > 0 && (
+          <div style={styles.articleImages}>
+            {entry.images.map((img, i) => (
+              <img key={i} src={img.data || img.url} alt={img.name} style={styles.articleImage} />
+            ))}
+          </div>
+        )}
+
+        {/* Attachments */}
+        {entry.attachments && entry.attachments.length > 0 && (
+          <div style={styles.articleAttachments}>
+            <h3 style={{fontFamily: "'DM Sans', sans-serif", fontSize: 16, marginBottom: 12}}>Attachments</h3>
+            {entry.attachments.map((att, i) => (
+              <a key={i} href={att.data || att.url} download={att.name} style={styles.attachmentLink}>
+                📎 {att.name}
+              </a>
+            ))}
+          </div>
+        )}
+      </article>
+
+      {/* Comments Section */}
+      <div style={styles.commentsSection} className="comments-section-mobile">
+        <h3 style={styles.commentsTitle}>
+          💬 {comments.length} {comments.length === 1 ? 'Comment' : 'Comments'}
+        </h3>
+
+        {comments.length > 0 && (
+          <div style={styles.commentsList}>
+            {comments.map((comment) => (
+              <div key={comment.id} style={styles.commentItem}>
+                <div style={styles.commentHeader}>
+                  <strong style={styles.commentAuthor}>{comment.name}</strong>
+                  <span style={styles.commentTime}>
+                    {new Date(comment.timestamp).toLocaleDateString("en-CA", { month: "short", day: "numeric" })}
+                  </span>
+                </div>
+                <p style={styles.commentText}>{comment.text}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={styles.commentForm}>
+          <input
+            style={styles.commentInput}
+            placeholder="Your name (required)"
+            value={commentName}
+            onChange={(e) => setCommentName(e.target.value)}
+            required
+          />
+          <textarea
+            style={styles.commentTextarea}
+            placeholder="Leave a comment..."
+            value={commentText}
+            onChange={(e) => setCommentText(e.target.value)}
+            required
+          />
+          <button style={styles.commentSubmitBtn} onClick={handleAddComment}>
+            Post Comment
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+      {/* Back Button */}
+      <button style={styles.backBtn} onClick={onBack}>
+        ← Back to {entry.section}
+      </button>
+
+      {/* Article */}
+      <article style={styles.articleContainer}>
+        <header style={styles.articleHeader}>
+          <h1 style={styles.articleTitle}>{entry.title}</h1>
+          <time style={styles.articleDate}>{formattedDate}</time>
+        </header>
+
+        <div 
+          style={styles.articleBody}
+          dangerouslySetInnerHTML={{ __html: formatMarkdown(entry.body) }}
+        />
+
+        {/* Images */}
+        {entry.images && entry.images.length > 0 && (
+          <div style={styles.articleImages}>
+            {entry.images.map((img, i) => (
+              <img key={i} src={img.data || img.url} alt={img.name} style={styles.articleImage} />
+            ))}
+          </div>
+        )}
+
+        {/* Attachments */}
+        {entry.attachments && entry.attachments.length > 0 && (
+          <div style={styles.articleAttachments}>
+            <h3 style={{fontFamily: "'DM Sans', sans-serif", fontSize: 16, marginBottom: 12}}>Attachments</h3>
+            {entry.attachments.map((att, i) => (
+              <a key={i} href={att.data || att.url} download={att.name} style={styles.attachmentLink}>
+                📎 {att.name}
+              </a>
+            ))}
+          </div>
+        )}
+      </article>
+
+      {/* Comments Section */}
+      <div style={styles.commentsSection}>
+        <h3 style={styles.commentsTitle}>
+          💬 {comments.length} {comments.length === 1 ? 'Comment' : 'Comments'}
+        </h3>
+
+        {comments.length > 0 && (
+          <div style={styles.commentsList}>
+            {comments.map((comment) => (
+              <div key={comment.id} style={styles.commentItem}>
+                <div style={styles.commentHeader}>
+                  <strong style={styles.commentAuthor}>{comment.name}</strong>
+                  <span style={styles.commentTime}>
+                    {new Date(comment.timestamp).toLocaleDateString("en-CA", { month: "short", day: "numeric" })}
+                  </span>
+                </div>
+                <p style={styles.commentText}>{comment.text}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={styles.commentForm}>
+          <input
+            style={styles.commentInput}
+            placeholder="Your name (required)"
+            value={commentName}
+            onChange={(e) => setCommentName(e.target.value)}
+            required
+          />
+          <textarea
+            style={styles.commentTextarea}
+            placeholder="Leave a comment..."
+            value={commentText}
+            onChange={(e) => setCommentText(e.target.value)}
+            required
+          />
+          <button style={styles.commentSubmitBtn} onClick={handleAddComment}>
+            Post Comment
+          </button>
+        </div>
+      </div>
+    </div>
+  );
         ← Back to {entry.section}
       </button>
 
@@ -732,7 +904,7 @@ function ReadingView({ entry, comments, onBack, onAddComment, onDeleteComment })
         <div style={styles.commentForm}>
           <input
             style={styles.commentInput}
-            placeholder="Name (optional)"
+            placeholder="Your name (required)"
             value={commentName}
             onChange={(e) => setCommentName(e.target.value)}
           />
@@ -874,7 +1046,7 @@ function GridView({ section, entries, comments, onNew, onEdit, onDelete, onAddCo
           <p style={styles.emptyText}>No posts yet in this section. Check back soon!</p>
         </div>
       ) : (
-        <div style={styles.grid}>
+        <div style={styles.grid} className="grid-mobile">
           {entries
             .filter(entry => entry.published !== false)
             .map((entry) => (
@@ -913,6 +1085,14 @@ function EntryCard({ entry, comments, onEdit, onDelete, onAddComment, onDeleteCo
     : "";
 
   const submitComment = () => {
+    if (!commentName.trim()) {
+      alert("Please enter your name");
+      return;
+    }
+    if (!commentText.trim()) {
+      alert("Please enter a comment");
+      return;
+    }
     onAddComment(entry.id, commentName, commentText);
     setCommentName("");
     setCommentText("");
@@ -993,7 +1173,7 @@ function EntryCard({ entry, comments, onEdit, onDelete, onAddComment, onDeleteCo
             <div style={styles.commentForm}>
               <input
                 style={styles.commentInput}
-                placeholder="Name (optional)"
+                placeholder="Your name (required)"
                 value={commentName}
                 onChange={(e) => setCommentName(e.target.value)}
               />
@@ -2257,6 +2437,81 @@ const styles = {
   link.href = "https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;0,700;1,400;1,600&family=DM+Sans:wght@400;500;600;700&display=swap";
   link.rel = "stylesheet";
   document.head.appendChild(link);
+})();
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MOBILE RESPONSIVE CSS
+// ═══════════════════════════════════════════════════════════════════════════
+(function() {
+  const style = document.createElement('style');
+  style.textContent = `
+    /* Mobile optimizations */
+    @media (max-width: 768px) {
+      /* Hide floating nav on mobile */
+      .floating-nav-mobile-hide {
+        display: none !important;
+      }
+      
+      /* Adjust reading container padding */
+      .reading-container-mobile {
+        padding: 20px 16px !important;
+      }
+      
+      /* Article container mobile */
+      .article-container-mobile {
+        padding: 32px 24px !important;
+        margin-bottom: 24px !important;
+      }
+      
+      /* Article title mobile */
+      .article-title-mobile {
+        font-size: 32px !important;
+        line-height: 1.2 !important;
+      }
+      
+      /* Article body mobile */
+      .article-body-mobile {
+        font-size: 17px !important;
+        line-height: 1.7 !important;
+      }
+      
+      /* Comments section mobile */
+      .comments-section-mobile {
+        padding: 24px 20px !important;
+      }
+      
+      /* Card grid mobile */
+      .grid-mobile {
+        gap: 16px !important;
+      }
+      
+      /* Header mobile */
+      .header-content-mobile {
+        padding: 16px 20px !important;
+      }
+      
+      /* Main content mobile */
+      .main-mobile {
+        padding: 24px 16px !important;
+      }
+    }
+    
+    @media (max-width: 480px) {
+      /* Extra small screens */
+      .article-title-mobile {
+        font-size: 28px !important;
+      }
+      
+      .article-body-mobile {
+        font-size: 16px !important;
+      }
+      
+      .article-container-mobile {
+        padding: 24px 16px !important;
+      }
+    }
+  `;
+  document.head.appendChild(style);
 })();
     
     const root = ReactDOM.createRoot(document.getElementById('root'));
