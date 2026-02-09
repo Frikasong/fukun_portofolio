@@ -274,6 +274,7 @@ function App() {
   const [form, setForm] = useState({ title: "", date: "", body: "", images: [], attachments: [], section: "legal-tech" });
   const [menuOpen, setMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+  const [mobileFloatingMenuOpen, setMobileFloatingMenuOpen] = useState(false);
   
   // Music player
   const [isPlaying, setIsPlaying] = useState(false);
@@ -472,9 +473,9 @@ function App() {
         </div>
       )}
 
-      {/* Floating Quick Navigation */}
+      {/* Floating Quick Navigation - Desktop */}
       {isScrolled && view === "grid" && (
-        <div style={styles.floatingNav} className="floating-nav-mobile-hide">
+        <div style={styles.floatingNav} className="floating-nav-desktop-only">
           <div style={styles.floatingNavTitle}>Quick Nav</div>
           {SECTIONS.map((section) => (
             <button
@@ -493,6 +494,44 @@ function App() {
             </button>
           ))}
         </div>
+      )}
+
+      {/* Floating Quick Navigation - Mobile */}
+      {isScrolled && view === "grid" && (
+        <>
+          {/* Mobile menu toggle button */}
+          <button 
+            style={styles.mobileFloatingToggle}
+            className="mobile-floating-toggle"
+            onClick={() => setMobileFloatingMenuOpen(!mobileFloatingMenuOpen)}
+          >
+            {mobileFloatingMenuOpen ? '×' : '☰'}
+          </button>
+          
+          {/* Mobile menu panel */}
+          {mobileFloatingMenuOpen && (
+            <div style={styles.mobileFloatingNav} className="mobile-floating-nav">
+              <div style={styles.floatingNavTitle}>Quick Nav</div>
+              {SECTIONS.map((section) => (
+                <button
+                  key={section.id}
+                  style={{
+                    ...styles.floatingNavBtn,
+                    ...(activeSection === section.id ? styles.floatingNavBtnActive : {})
+                  }}
+                  onClick={() => {
+                    setActiveSection(section.id);
+                    setMobileFloatingMenuOpen(false);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                >
+                  <span style={styles.floatingNavIcon}>{section.icon}</span>
+                  <span style={styles.floatingNavLabel}>{section.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {/* Header */}
@@ -631,7 +670,7 @@ function App() {
       {/* Footer */}
       <footer style={styles.footer}>
         <div style={styles.footerContent}>
-          <span>© 2026 Fukun · Osgoode Hall Law School</span>
+          <span>© 2026 Fukun · All Rights Reserved</span>
           <a href="mailto:frikasong@gmail.com" style={styles.footerLink}>
             frikasong@gmail.com
           </a>
@@ -2265,6 +2304,42 @@ const styles = {
   floatingNavLabel: {
     fontSize: 13,
   },
+  // Mobile Floating Navigation
+  mobileFloatingToggle: {
+    position: "fixed",
+    right: 16,
+    bottom: 80,
+    width: 56,
+    height: 56,
+    borderRadius: "50%",
+    background: "linear-gradient(135deg, #7ab8d4 0%, #6a9eb8 100%)",
+    color: "#fff",
+    border: "none",
+    fontSize: 24,
+    cursor: "pointer",
+    boxShadow: "0 4px 20px rgba(122, 184, 212, 0.4)",
+    zIndex: 999,
+    display: "none",
+    alignItems: "center",
+    justifyContent: "center",
+    transition: "all 0.3s",
+  },
+  mobileFloatingNav: {
+    position: "fixed",
+    right: 16,
+    bottom: 145,
+    background: "#fff",
+    border: "1px solid rgba(173, 216, 230, 0.3)",
+    borderRadius: 16,
+    padding: "16px 12px",
+    boxShadow: "0 4px 20px rgba(100, 130, 150, 0.15)",
+    zIndex: 998,
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    minWidth: 140,
+    maxWidth: 180,
+  },
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2283,11 +2358,29 @@ const styles = {
 (function() {
   const style = document.createElement('style');
   style.textContent = `
+    /* Desktop: Show desktop nav, hide mobile toggle */
+    @media (min-width: 769px) {
+      .floating-nav-desktop-only {
+        display: flex !important;
+      }
+      .mobile-floating-toggle {
+        display: none !important;
+      }
+      .mobile-floating-nav {
+        display: none !important;
+      }
+    }
+    
     /* Mobile optimizations */
     @media (max-width: 768px) {
-      /* Hide floating nav on mobile */
-      .floating-nav-mobile-hide {
+      /* Hide desktop floating nav on mobile */
+      .floating-nav-desktop-only {
         display: none !important;
+      }
+      
+      /* Show mobile floating toggle */
+      .mobile-floating-toggle {
+        display: flex !important;
       }
       
       /* Adjust reading container padding */
